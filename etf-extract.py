@@ -1,10 +1,17 @@
 import csv
 import re
+import argparse
+import os
+
+# Step 1: Define command-line arguments
+parser = argparse.ArgumentParser(description='Process a CSV file and filter ETF data.')
+parser.add_argument('input_file', type=str, help='Path to the input CSV file')
+args = parser.parse_args()
 
 # File path to the CSV
-file_path = './MW-ETF-24-Oct-2024.csv'
+file_path = args.input_file
 
-# Step 1: Read the CSV file and clean column names with BOM handling
+# Step 2: Read the CSV file and clean column names with BOM handling
 with open(file_path, 'r', encoding='utf-8-sig') as file:
     reader = csv.DictReader(file)
     data = [row for row in reader]
@@ -15,23 +22,25 @@ if data:
 else:
     print("The CSV file is empty or not read properly.")
 
-# Step 2: Clean the column names by stripping leading/trailing spaces and handling NoneType
+# Step 3: Clean the column names by stripping leading/trailing spaces and handling NoneType
 for i, row in enumerate(data):
     data[i] = {key.strip() if key is not None else key: value for key, value in row.items()}
 
-# Step 3: Convert 'Underlying Asset' to Title Case immediately after loading
+# Step 4: Convert 'Underlying Asset' to Title Case immediately after loading
 for row in data:
     row['UNDERLYING ASSET'] = row['UNDERLYING ASSET'].strip().title()
 
-# Step 4: Initial replacements in 'Underlying Asset'
+# Step 5: Initial replacements in 'Underlying Asset'
 
 # Replace 'ETF', 'TRI', and 'Total Return Index' at the end with 'Index'
 for row in data:
     asset = row['UNDERLYING ASSET'].strip()
     # Insert a space between an alphabet and number (e.g., 'midsmall400' -> 'midsmall 400')
-    asset = re.sub(r'([a-zA-Z])(\d)', r'\1 \2', asset) 
+    asset = re.sub(r'([a-zA-Z])(\d)', r'\1 \2', asset)
     if "Cpse" in asset:
         asset = asset.replace("Cpse", "Nifty Pse")
+    if "Low Vol 30" in asset:
+        asset = asset.replace("Low Vol 30", "Low Volatility 30")
     if asset.endswith('Etf'):
         asset = asset[:-3] + 'Index'
     elif asset.endswith('Tri'):
@@ -65,7 +74,7 @@ def replace_s_and_p(asset):
 for row in data:
     row['UNDERLYING ASSET'] = replace_s_and_p(row['UNDERLYING ASSET'].strip())
 
-# Step 5: Convert 'Volume' and 'Price' columns to numeric by removing commas and handling errors
+# Step 6: Convert 'Volume' and 'Price' columns to numeric by removing commas and handling errors
 def clean_numeric(value):
     try:
         return float(value.replace(',', ''))
@@ -84,12 +93,12 @@ for row in data:
 # Debugging step: print some of the volumes for inspection
 print(f"Sample of Volume values: {volumes[:20]}")  # Show the first 20 volume values
 
-# Step 6: Filter rows where volume is greater than 100,000
+# Step 7: Filter rows where volume is greater than 100,000
 filtered_data = [row for row in data if row['Volume'] and row['Volume'] > 100000]
 print(f"Rows after filtering by volume: {len(filtered_data)}")
 
-# Step 7: Remove rows where 'Underlying Asset' contains unwanted keywords
-unwanted_keywords = ['LIQUID', 'GILT', 'Government', 'G-Sec', 'Rate', 'SDL', 'Hang Seng']
+# Step 8: Remove rows where 'Underlying Asset' contains unwanted keywords
+unwanted_keywords = ['LIQUID', 'GILT', 'Government', 'G-Sec', 'GSEC', 'Rate', 'SDL', 'Hang Seng']
 
 def contains_unwanted_keywords(asset):
     return any(keyword.lower() in asset.lower() for keyword in unwanted_keywords)
@@ -97,18 +106,18 @@ def contains_unwanted_keywords(asset):
 filtered_data = [row for row in filtered_data if not contains_unwanted_keywords(row['UNDERLYING ASSET'])]
 print(f"Rows after removing unwanted keywords: {len(filtered_data)}")
 
-# Step 7.1: Remove rows with specific symbols (case insensitive)
+# Step 8.1: Remove rows with specific symbols (case insensitive)
 symbols_to_remove = ['GROWWGOLD', 'HNGSNGBEES', 'MAHKTECH']
 
 filtered_data = [row for row in filtered_data if row['SYMBOL'].upper() not in symbols_to_remove]
 print(f"Rows after removing specific symbols: {len(filtered_data)}")
 
-# Step 8: Remove rows containing "silver" or "gold" except for symbols "Silverbees" and "Goldbees"
-filtered_data = [row for row in filtered_data if not (('silver' in row['UNDERLYING ASSET'].lower() or 'gold' in row['UNDERLYING ASSET'].lower()) 
+# Step 9: Remove rows containing "silver" or "gold" except for symbols "Silverbees" and "Goldbees"
+filtered_data = [row for row in filtered_data if not (('silver' in row['UNDERLYING ASSET'].lower() or 'gold' in row['UNDERLYING ASSET'].lower())
                      and row['SYMBOL'].lower() not in ['Silverbees', 'Goldbees'])]
 print(f"Rows after removing 'silver' and 'gold' rows: {len(filtered_data)}")
 
-# Step 9: Select the row with the maximum volume for each unique 'Underlying Asset'
+# Step 10: Select the row with the maximum volume for each unique 'Underlying Asset'
 max_volume_per_asset = {}
 for row in filtered_data:
     asset = row['UNDERLYING ASSET']
@@ -120,13 +129,14 @@ for row in filtered_data:
 unique_filtered_data = list(max_volume_per_asset.values())
 print(f"Rows after selecting max volume for each asset: {len(unique_filtered_data)}")
 
-# Step 10: Sort by 'Underlying Asset' before writing to the file
+# Step 11: Sort by 'Underlying Asset' before writing to the file
 sorted_data = sorted(unique_filtered_data, key=lambda x: x['UNDERLYING ASSET'])
 print(f"Rows after sorting by 'Underlying Asset': {len(sorted_data)}")
 
-# Step 11: Save the final sorted data to a new CSV file
+# Step 12: Save the final sorted data to a new CSV file
 if sorted_data:
-    output_file = 'filtered_sorted_by_underlying_etf_data.csv'
+    base_name = os.path.basename(file_path)
+    output_file = os.path.splitext(base_name)[0] + '_filtered.csv'
     with open(output_file, 'w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=sorted_data[0].keys())
         writer.writeheader()
@@ -134,4 +144,3 @@ if sorted_data:
     print(f"Data has been filtered, cleaned, and saved to '{output_file}'.")
 else:
     print("No data to write. Please check your filters and input.")
-
